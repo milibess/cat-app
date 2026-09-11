@@ -17,6 +17,11 @@ import {
   renderPhotoCatSelect, renderResult, renderDiary, renderFavorites,
   renderConferenceSelect, renderConferenceResult,
 } from './screens.js';
+import {
+  initSound, isMuted, toggleMuted,
+  playHitokoto, playScoreSound, playRareEvent, playConferenceStart,
+  playTrialOpen, playVerdict, playFavorite, playNewsJingle,
+} from './sound.js';
 
 const ROOT_SCREENS = ['top', 'diary', 'favorites', 'catManage', 'conferenceSelect'];
 const FALLBACK_CAT = { id: null, name: '（削除済みの猫）', color: '#D8A46E', photo: null };
@@ -89,7 +94,7 @@ function renderScreen() {
 
   switch (state.screen) {
     case 'top':
-      html = renderTop(cats, state.topFlavor.suggestion, state.topFlavor.oneLiner);
+      html = renderTop(cats, state.topFlavor.suggestion, state.topFlavor.oneLiner, isMuted());
       break;
     case 'catManage':
       html = renderHeader('プロフィール管理', false) + renderCatManage(cats);
@@ -118,7 +123,7 @@ function renderScreen() {
       html = renderHeader('猫会議', true) + renderConferenceResult(state.conference, cats, state.conference.savedId);
       break;
     default:
-      html = renderTop(cats, state.topFlavor.suggestion, state.topFlavor.oneLiner);
+      html = renderTop(cats, state.topFlavor.suggestion, state.topFlavor.oneLiner, isMuted());
   }
 
   appEl.innerHTML = html;
@@ -267,6 +272,20 @@ function startResult(catId, photo) {
     event,
   };
   pushScreen('result');
+  playResultSounds(score, event);
+}
+
+function playResultSounds(score, event) {
+  playHitokoto();
+  setTimeout(() => playScoreSound(score), 350);
+  if (!event) return;
+  setTimeout(() => playRareEvent(), 700);
+  if (event.type === 'conference') {
+    setTimeout(() => playConferenceStart(), 1200);
+  } else if (event.type === 'trial') {
+    setTimeout(() => playTrialOpen(), 1200);
+    setTimeout(() => playVerdict(event.trial.verdict.type), 1900);
+  }
 }
 
 async function handlePhotoInputChange(e) {
@@ -353,6 +372,7 @@ function startConference() {
     savedId: null,
   };
   pushScreen('conferenceResult');
+  playConferenceStart();
 }
 
 function regenerateConference() {
@@ -487,6 +507,7 @@ document.body.addEventListener('click', (e) => {
     case 'show-news': {
       const cat = getCat(state.result.catId) || FALLBACK_CAT;
       state.result.news = generateNews(cat.name);
+      playNewsJingle();
       renderScreen();
       break;
     }
@@ -494,6 +515,7 @@ document.body.addEventListener('click', (e) => {
     case 'toggle-favorite-current': {
       const r = state.result;
       r.favorite = !r.favorite;
+      if (r.favorite) playFavorite();
       if (r.savedId) updateDiaryEntry(r.savedId, { favorite: r.favorite });
       renderScreen();
       break;
@@ -510,6 +532,7 @@ document.body.addEventListener('click', (e) => {
         return;
       }
       state.result.quote = generateQuote(cat);
+      playHitokoto();
       renderScreen();
       break;
     }
@@ -540,6 +563,11 @@ document.body.addEventListener('click', (e) => {
 
     case 'start-conference':
       startConference();
+      break;
+
+    case 'toggle-sound':
+      toggleMuted();
+      renderScreen();
       break;
 
     case 'regenerate-conference':
@@ -575,3 +603,4 @@ function registerServiceWorker() {
 
 registerServiceWorker();
 gotoRoot('top');
+initSound();

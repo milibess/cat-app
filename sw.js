@@ -1,4 +1,4 @@
-const CACHE_NAME = 'uchi-no-neko-v1';
+const CACHE_NAME = 'uchi-no-neko-v2.1';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,6 +9,7 @@ const APP_SHELL = [
   './js/quotes.js',
   './js/screens.js',
   './js/photo.js',
+  './js/sound.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png'

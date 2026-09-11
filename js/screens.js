@@ -49,7 +49,7 @@ function resolveCat(cats, id) {
 
 /* ---------------- トップ画面 ---------------- */
 
-export function renderTop(cats, playSuggestion, oneLiner) {
+export function renderTop(cats, playSuggestion, oneLiner, muted) {
   const chips = cats
     .map(
       (c) => `
@@ -72,6 +72,9 @@ export function renderTop(cats, playSuggestion, oneLiner) {
 
   return `
     <div class="top-hero">
+      <button class="sound-toggle-btn" data-action="toggle-sound" aria-label="音のON/OFF">
+        ${muted ? '🔇 音OFF' : '🔊 音ON'}
+      </button>
       <h1 class="app-title">うちの猫、今こう言ってます 🐾</h1>
       <p class="app-sub">写真から、今日の気持ちを聞いてみよう</p>
     </div>
@@ -109,6 +112,8 @@ export function renderTop(cats, playSuggestion, oneLiner) {
 
 /* ---------------- 猫プロフィール管理（一覧） ---------------- */
 
+const APP_VERSION = '2.1';
+
 export function renderCatManage(cats) {
   if (!cats.length) {
     return `
@@ -118,6 +123,7 @@ export function renderCatManage(cats) {
           まだ猫が登録されていません。<br>右下の「猫を追加」から登録しましょう。
         </div>
         <button class="btn-block" data-action="add-cat">＋ 猫を追加する</button>
+        <div class="app-version">Version ${APP_VERSION}</div>
       </div>
     `;
   }
@@ -140,6 +146,7 @@ export function renderCatManage(cats) {
     <div class="screen">
       ${items}
       ${cats.length < 3 ? `<button class="btn-block secondary" data-action="add-cat">＋ 猫を追加する（あと${3 - cats.length}匹）</button>` : ''}
+      <div class="app-version">Version ${APP_VERSION}</div>
     </div>
   `;
 }

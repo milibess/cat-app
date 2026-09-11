@@ -109,6 +109,21 @@ img { max-width: 100%; display: block; }
 .top-hero {
   padding: 18px 20px 4px;
   text-align: center;
+  position: relative;
+}
+
+.sound-toggle-btn {
+  position: absolute;
+  top: calc(var(--safe-top) + 14px);
+  right: 16px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-sub);
+  white-space: nowrap;
 }
 
 .top-hero .app-title {
@@ -1062,6 +1077,14 @@ img { max-width: 100%; display: block; }
 
 .modal-sheet h3 { margin: 0 0 10px; font-size: 16px; }
 .modal-sheet p { margin: 0 0 20px; font-size: 13.5px; color: var(--text-sub); line-height: 1.7; }
+
+/* ---------- バージョン表示 ---------- */
+.app-version {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 18px;
+}
 
 @media (max-width: 360px) {
   .cat-chip { width: 68px; }
