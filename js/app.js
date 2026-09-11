@@ -8,13 +8,17 @@ import {
   ACCENT_COLORS,
 } from './db.js';
 import { fileToResizedDataURL } from './photo.js';
-import { PERSONALITIES, TONES, generateQuote, generateOwnerScore, generateDiagnosis, generateNews } from './quotes.js';
+import {
+  PERSONALITIES, TONES, generateQuote, generateOwnerScore, generateDiagnosis, generateNews,
+  generateTitle, pickRandomEvent, generateConference, generatePlaySuggestion, generateOneLiner,
+} from './quotes.js';
 import {
   escapeHtml, renderTop, renderCatManage, renderCatForm,
   renderPhotoCatSelect, renderResult, renderDiary, renderFavorites,
+  renderConferenceSelect, renderConferenceResult,
 } from './screens.js';
 
-const ROOT_SCREENS = ['top', 'diary', 'favorites', 'catManage'];
+const ROOT_SCREENS = ['top', 'diary', 'favorites', 'catManage', 'conferenceSelect'];
 const FALLBACK_CAT = { id: null, name: '（削除済みの猫）', color: '#D8A46E', photo: null };
 
 const state = {
@@ -25,6 +29,9 @@ const state = {
   photoInputMode: 'diary', // 'diary' | 'profile'
   result: null,
   diaryFilter: 'all',
+  topFlavor: { suggestion: '', oneLiner: '' },
+  conferenceSelect: { selectedIds: [] },
+  conference: null,
 };
 
 const appEl = document.getElementById('app');
@@ -35,6 +42,7 @@ const bottomNavEl = document.createElement('nav');
 bottomNavEl.className = 'bottom-nav';
 bottomNavEl.innerHTML = `
   <button data-action="root" data-screen="top"><span class="emoji">🏠</span>ホーム</button>
+  <button data-action="root" data-screen="conferenceSelect"><span class="emoji">🗣️</span>会議</button>
   <button data-action="root" data-screen="diary"><span class="emoji">📓</span>日記</button>
   <button data-action="root" data-screen="favorites"><span class="emoji">♡</span>お気に入り</button>
   <button data-action="root" data-screen="catManage"><span class="emoji">🐾</span>プロフィール</button>
@@ -46,6 +54,12 @@ document.body.appendChild(bottomNavEl);
 function gotoRoot(screen) {
   state.stack = [];
   state.screen = screen;
+  if (screen === 'top') {
+    state.topFlavor = { suggestion: generatePlaySuggestion(), oneLiner: generateOneLiner() };
+  }
+  if (screen === 'conferenceSelect') {
+    state.conferenceSelect = { selectedIds: [] };
+  }
   renderScreen();
 }
 
@@ -75,7 +89,7 @@ function renderScreen() {
 
   switch (state.screen) {
     case 'top':
-      html = renderTop(cats);
+      html = renderTop(cats, state.topFlavor.suggestion, state.topFlavor.oneLiner);
       break;
     case 'catManage':
       html = renderHeader('プロフィール管理', false) + renderCatManage(cats);
@@ -88,7 +102,7 @@ function renderScreen() {
       break;
     case 'result': {
       const cat = getCat(state.result.catId) || FALLBACK_CAT;
-      html = renderHeader('結果', true) + renderResult({ cat, result: state.result });
+      html = renderHeader('結果', true) + renderResult({ cat, result: state.result, cats });
       break;
     }
     case 'diary':
@@ -97,8 +111,14 @@ function renderScreen() {
     case 'favorites':
       html = renderHeader('お気に入り', false) + renderFavorites(getFavorites(), cats);
       break;
+    case 'conferenceSelect':
+      html = renderHeader('猫会議', false) + renderConferenceSelect(cats, state.conferenceSelect.selectedIds);
+      break;
+    case 'conferenceResult':
+      html = renderHeader('猫会議', true) + renderConferenceResult(state.conference, cats, state.conference.savedId);
+      break;
     default:
-      html = renderTop(cats);
+      html = renderTop(cats, state.topFlavor.suggestion, state.topFlavor.oneLiner);
   }
 
   appEl.innerHTML = html;
@@ -217,9 +237,22 @@ function startResult(catId, photo) {
     showToast('猫の情報が見つかりませんでした');
     return;
   }
-  const quote = generateQuote(cat);
+  const allCats = getCats();
+  let quote = generateQuote(cat);
   const diagnosis = generateDiagnosis(cat);
   const { score, comment } = generateOwnerScore(cat);
+  let title = generateTitle(cat, false);
+
+  const event = pickRandomEvent(allCats, cat);
+  if (event) {
+    if (event.type === 'title-boost') {
+      title = event.title;
+    } else if (event.type === 'snack-crisis') {
+      quote = event.message;
+      diagnosis.oyatsu = 95 + Math.floor(Math.random() * 6);
+    }
+  }
+
   state.result = {
     catId,
     photo,
@@ -230,6 +263,8 @@ function startResult(catId, photo) {
     news: null,
     favorite: false,
     savedId: null,
+    title,
+    event,
   };
   pushScreen('result');
 }
@@ -272,6 +307,8 @@ function openDiaryEntry(id) {
     news: entry.news,
     favorite: entry.favorite,
     savedId: entry.id,
+    title: entry.title || null,
+    event: entry.eventData || null,
   };
   pushScreen('result');
 }
@@ -279,6 +316,7 @@ function openDiaryEntry(id) {
 function saveCurrentResult() {
   const r = state.result;
   const payload = {
+    entryType: 'photo',
     catId: r.catId,
     photo: r.photo,
     quote: r.quote,
@@ -287,6 +325,9 @@ function saveCurrentResult() {
     scoreComment: r.scoreComment,
     news: r.news,
     favorite: r.favorite,
+    title: r.title || null,
+    eventType: r.event ? r.event.type : null,
+    eventData: r.event || null,
   };
   if (r.savedId) {
     updateDiaryEntry(r.savedId, payload);
@@ -297,6 +338,61 @@ function saveCurrentResult() {
     showToast('日記に保存しました');
   }
   renderScreen();
+}
+
+/* ---------------- 猫会議 ---------------- */
+
+function startConference() {
+  const cats = getCats().filter((c) => state.conferenceSelect.selectedIds.includes(c.id));
+  if (cats.length < 2) return;
+  const conference = generateConference(cats);
+  state.conference = {
+    theme: conference.theme,
+    lines: conference.lines,
+    participantIds: cats.map((c) => c.id),
+    savedId: null,
+  };
+  pushScreen('conferenceResult');
+}
+
+function regenerateConference() {
+  const cats = getCats().filter((c) => state.conference.participantIds.includes(c.id));
+  if (cats.length < 2) return;
+  const conference = generateConference(cats);
+  state.conference.theme = conference.theme;
+  state.conference.lines = conference.lines;
+  renderScreen();
+}
+
+function saveConference() {
+  const c = state.conference;
+  const payload = {
+    entryType: 'conference',
+    theme: c.theme,
+    lines: c.lines,
+    participantIds: c.participantIds,
+  };
+  if (c.savedId) {
+    updateDiaryEntry(c.savedId, payload);
+    showToast('日記を更新しました');
+  } else {
+    const saved = addDiaryEntry(payload);
+    c.savedId = saved.id;
+    showToast('日記に保存しました');
+  }
+  renderScreen();
+}
+
+function openDiaryConference(id) {
+  const entry = getDiaryEntry(id);
+  if (!entry) return;
+  state.conference = {
+    theme: entry.theme,
+    lines: entry.lines,
+    participantIds: entry.participantIds,
+    savedId: entry.id,
+  };
+  pushScreen('conferenceResult');
 }
 
 /* ---------------- イベント委譲 ---------------- */
@@ -425,6 +521,37 @@ document.body.addEventListener('click', (e) => {
 
     case 'open-diary':
       openDiaryEntry(target.dataset.id);
+      break;
+
+    case 'toggle-conference-cat': {
+      const id = target.dataset.id;
+      const ids = state.conferenceSelect.selectedIds;
+      const idx = ids.indexOf(id);
+      if (idx >= 0) {
+        ids.splice(idx, 1);
+      } else if (ids.length < 3) {
+        ids.push(id);
+      } else {
+        showToast('会議に参加できるのは最大3匹までです');
+      }
+      renderScreen();
+      break;
+    }
+
+    case 'start-conference':
+      startConference();
+      break;
+
+    case 'regenerate-conference':
+      regenerateConference();
+      break;
+
+    case 'save-conference':
+      saveConference();
+      break;
+
+    case 'open-diary-conference':
+      openDiaryConference(target.dataset.id);
       break;
   }
 });

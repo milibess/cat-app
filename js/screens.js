@@ -6,6 +6,15 @@
 import { ACCENT_COLORS } from './db.js';
 import { PERSONALITIES, TONES, TRAITS } from './quotes.js';
 
+const EVENT_LABELS = {
+  conference: '緊急猫会議',
+  trial: '飼い主裁判',
+  'title-boost': '称号強化',
+  'news-special': 'ニュース特番',
+  'snack-crisis': 'おやつ危機',
+  'boss-cat': 'ボス猫決定',
+};
+
 export function escapeHtml(str) {
   if (str == null) return '';
   return String(str)
@@ -34,9 +43,13 @@ function avatarHtml(cat, size = 68) {
   return `<div class="avatar placeholder" style="width:${size}px;height:${size}px;--cat-color:${cat.color}">🐱</div>`;
 }
 
+function resolveCat(cats, id) {
+  return cats.find((c) => c.id === id) || { id, name: '（削除済みの猫）', color: '#D8A46E', photo: null };
+}
+
 /* ---------------- トップ画面 ---------------- */
 
-export function renderTop(cats) {
+export function renderTop(cats, playSuggestion, oneLiner) {
   const chips = cats
     .map(
       (c) => `
@@ -64,6 +77,11 @@ export function renderTop(cats) {
     </div>
     <div class="cat-strip">${chips}${addChip}</div>
     ${!hasAnyCat ? `<div class="empty-hint">まずは「猫を追加」から、猫プロフィールを登録してください🐾</div>` : ''}
+    ${hasAnyCat ? `
+    <div class="play-hint">
+      <div class="play-suggestion"><span class="emoji">🎲</span>今日のおすすめ：${escapeHtml(playSuggestion)}</div>
+      <div class="one-liner">${escapeHtml(oneLiner)}</div>
+    </div>` : ''}
     <div class="action-buttons">
       <button class="btn-primary filled" data-action="open-camera" ${!hasAnyCat ? 'disabled' : ''}>
         <span class="emoji">📷</span>今撮る
@@ -73,13 +91,16 @@ export function renderTop(cats) {
       </button>
     </div>
     <div class="quick-links">
-      <button class="quick-link" data-action="nav" data-screen="diary">
+      <button class="quick-link" data-action="root" data-screen="conferenceSelect">
+        <span class="emoji">🗣️</span>猫会議
+      </button>
+      <button class="quick-link" data-action="root" data-screen="diary">
         <span class="emoji">📓</span>猫日記
       </button>
-      <button class="quick-link" data-action="nav" data-screen="favorites">
+      <button class="quick-link" data-action="root" data-screen="favorites">
         <span class="emoji">♡</span>お気に入り
       </button>
-      <button class="quick-link" data-action="nav" data-screen="catManage">
+      <button class="quick-link" data-action="root" data-screen="catManage">
         <span class="emoji">🐾</span>プロフィール
       </button>
     </div>
@@ -213,24 +234,190 @@ export function renderPhotoCatSelect(cats, photo, selectedId) {
   `;
 }
 
+/* ---------------- 今日の称号バッジ ---------------- */
+
+function titleBadgeHtml(title) {
+  if (!title) return '';
+  if (title.rare) {
+    return `
+      <div class="title-badge rare">
+        <span class="title-badge-label">✨ 本日の称号（強化版）</span>
+        <div class="title-badge-text">${escapeHtml(title.text)}</div>
+        <div class="title-badge-text sub">＋ ${escapeHtml(title.text2)}</div>
+      </div>`;
+  }
+  return `
+    <div class="title-badge">
+      <span class="title-badge-label">🏷️ 本日の称号</span>
+      <div class="title-badge-text">${escapeHtml(title.text)}</div>
+    </div>`;
+}
+
+/* ---------------- レアイベントバナー ---------------- */
+
+function eventBannerHtml(event) {
+  if (!event) return '';
+  return `
+    <div class="event-banner">
+      <span class="event-banner-tag">${event.emoji} レアイベント発生！</span>
+      <div class="event-banner-label">${escapeHtml(event.label)}</div>
+    </div>`;
+}
+
+/* ---------------- 猫会議（共通パーツ） ---------------- */
+
+function conferenceBubblesHtml(conference, cats) {
+  const rows = conference.lines
+    .map((line) => {
+      const cat = resolveCat(cats, line.catId);
+      return `
+      <div class="conf-row">
+        ${avatarHtml(cat, 40)}
+        <div class="conf-bubble-wrap">
+          <div class="conf-name" style="--cat-color:${cat.color}">${escapeHtml(cat.name)}</div>
+          <div class="conf-bubble">${escapeHtml(line.text)}</div>
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  return `
+    <div class="conference-theme-card">
+      <span class="conference-theme-label">本日の議題</span>
+      <div class="conference-theme-text">${escapeHtml(conference.theme)}</div>
+    </div>
+    <div class="conference-log">${rows}</div>
+  `;
+}
+
+export function renderConferenceSelect(cats, selectedIds) {
+  if (cats.length < 2) {
+    return `<div class="screen"><div class="empty-state"><span class="emoji">🗣️</span>猫会議には猫が2匹以上必要です。<br>プロフィールを追加してください。</div></div>`;
+  }
+
+  const items = cats
+    .map((c) => {
+      const selected = selectedIds.includes(c.id);
+      return `
+      <button class="cat-select-item ${selected ? 'selected' : ''}" style="--cat-color:${c.color}" data-action="toggle-conference-cat" data-id="${c.id}">
+        ${avatarHtml(c, 54)}
+        <span class="name">${escapeHtml(c.name)}</span>
+        ${selected ? '<span class="select-check">✓</span>' : ''}
+      </button>`;
+    })
+    .join('');
+
+  const count = selectedIds.length;
+  const canStart = count >= 2 && count <= 3;
+
+  return `
+    <div class="screen">
+      <div class="empty-hint" style="margin:0 0 18px">参加する猫を2〜3匹選んでください（${count}匹選択中）</div>
+      <div class="cat-select-grid">${items}</div>
+      <button class="btn-block" data-action="start-conference" style="margin-top:22px" ${canStart ? '' : 'disabled'}>会議開始</button>
+    </div>
+  `;
+}
+
+export function renderConferenceResult(conference, cats, savedId) {
+  return `
+    <div class="screen">
+      ${conferenceBubblesHtml(conference, cats)}
+      <div class="result-actions" style="margin-top:18px">
+        <button class="icon-btn ${savedId ? 'filled' : ''}" data-action="save-conference">
+          ${savedId ? '✓ 保存済み（更新する）' : '💾 保存'}
+        </button>
+        <button class="icon-btn" data-action="regenerate-conference">🔁 もう一回会議</button>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------------- 飼い主裁判（共通パーツ） ---------------- */
+
+const VERDICT_CLASS = {
+  '有罪': 'guilty',
+  '執行猶予': 'probation',
+  '無罪': 'innocent',
+  '厳重注意': 'warning',
+};
+
+function trialCardHtml(trial, cats) {
+  const testimonyRows = trial.testimonies
+    .map((t) => {
+      const cat = resolveCat(cats, t.catId);
+      return `
+      <div class="conf-row">
+        ${avatarHtml(cat, 40)}
+        <div class="conf-bubble-wrap">
+          <div class="conf-name" style="--cat-color:${cat.color}">${escapeHtml(cat.name)}</div>
+          <div class="conf-bubble">${escapeHtml(t.text)}</div>
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  const verdictClass = VERDICT_CLASS[trial.verdict.type] || 'warning';
+
+  return `
+    <div class="trial-card">
+      <div class="trial-header">⚖️ 飼い主裁判</div>
+      <div class="trial-theme">議題：${escapeHtml(trial.theme)}</div>
+      <div class="conference-log">${testimonyRows}</div>
+      <div class="verdict-card ${verdictClass}">
+        <div class="verdict-type">判決：${escapeHtml(trial.verdict.type)}</div>
+        <div class="verdict-detail">${escapeHtml(trial.verdict.detail)}</div>
+      </div>
+    </div>
+  `;
+}
+
 /* ---------------- 結果画面 ---------------- */
 
 export function renderResult(state) {
   const cat = state.cat;
   const r = state.result;
+  const cats = state.cats || [];
+  const event = r.event || null;
 
   const newsHtml = r.news
     ? `<div class="news-banner"><span class="news-label">NEWS</span>${escapeHtml(r.news)}</div>`
     : '';
 
+  let eventExtraHtml = '';
+  if (event) {
+    if (event.type === 'conference') {
+      eventExtraHtml = `<div class="event-section">${conferenceBubblesHtml(event.conference, cats)}</div>`;
+    } else if (event.type === 'trial') {
+      eventExtraHtml = `<div class="event-section">${trialCardHtml(event.trial, cats)}</div>`;
+    } else if (event.type === 'news-special') {
+      eventExtraHtml = `
+        <div class="news-special-card">
+          <div class="news-special-header">📺 猫ニュース特番</div>
+          ${event.newsItems.map((n) => `<div class="news-special-item">${escapeHtml(n)}</div>`).join('')}
+        </div>`;
+    } else if (event.type === 'boss-cat') {
+      const boss = resolveCat(cats, event.bossCat.id);
+      eventExtraHtml = `
+        <div class="boss-cat-card">
+          <div class="boss-cat-header">👑 本日のボス猫</div>
+          ${avatarHtml(boss, 64)}
+          <div class="boss-cat-name">${escapeHtml(boss.name)}</div>
+        </div>`;
+    }
+  }
+
   return `
     <div class="screen">
+      ${eventBannerHtml(event)}
       <div class="result-photo">
         <img src="${r.photo}" alt="猫の写真">
         <div class="cat-tag"><span class="dot" style="--cat-color:${cat.color}"></span>${escapeHtml(cat.name)}</div>
       </div>
 
       <div class="speech-bubble">${escapeHtml(r.quote).replace(/\n/g, '<br>')}</div>
+
+      ${titleBadgeHtml(r.title)}
 
       <div class="stat-row">
         <div class="stat-card"><div class="label">ごきげん</div><div class="value">${r.diagnosis.genki}</div></div>
@@ -246,6 +433,7 @@ export function renderResult(state) {
       </div>
 
       ${newsHtml}
+      ${eventExtraHtml}
 
       <div class="result-actions">
         <button class="icon-btn" data-action="show-news">📰 猫ニュース</button>
@@ -286,13 +474,32 @@ export function renderDiary(diary, cats, filterCatId) {
 }
 
 function diaryCardHtml(d, cats) {
+  if (d.entryType === 'conference') {
+    const participants = (d.participantIds || []).map((id) => resolveCat(cats, id));
+    const avatars = participants.map((p) => avatarHtml(p, 32)).join('');
+    const names = participants.map((p) => escapeHtml(p.name)).join('・');
+    return `
+      <button class="diary-card" data-action="open-diary-conference" data-id="${d.id}">
+        <div class="diary-card-icon">🗣️</div>
+        <div class="content">
+          <div class="top-line">${names} ・ ${formatDate(d.createdAt)}</div>
+          <div class="quote">議題：${escapeHtml(d.theme)}</div>
+          <div class="bottom-line"><span class="diary-mini-avatars">${avatars}</span></div>
+        </div>
+      </button>
+    `;
+  }
+
   const cat = cats.find((c) => c.id === d.catId) || { name: '（削除済み）', color: '#D8A46E' };
+  const tag = d.eventType ? `<span class="diary-event-tag">${EVENT_LABELS[d.eventType] || 'イベント'}</span>` : '';
+  const titleTag = d.title ? `<span class="diary-title-tag">${escapeHtml(d.title.text)}</span>` : '';
   return `
     <button class="diary-card" data-action="open-diary" data-id="${d.id}">
       <img src="${d.photo}" alt="${escapeHtml(cat.name)}">
       <div class="content">
-        <div class="top-line"><span class="dot" style="--cat-color:${cat.color}"></span>${escapeHtml(cat.name)} ・ ${formatDate(d.createdAt)}</div>
+        <div class="top-line"><span class="dot" style="--cat-color:${cat.color}"></span>${escapeHtml(cat.name)} ・ ${formatDate(d.createdAt)}${tag}</div>
         <div class="quote">${escapeHtml(d.quote)}</div>
+        ${titleTag ? `<div class="bottom-line">${titleTag}</div>` : ''}
         <div class="bottom-line">
           <span>飼い主評価 ${d.score}点</span>
           ${d.favorite ? '<span class="fav-mark">♥</span>' : ''}

@@ -222,3 +222,265 @@ export function generateNews(catName) {
   const template = pick(NEWS_TEMPLATES);
   return template.replace('{time}', time).replace('{cat}', catName);
 }
+
+/* ---------------- 今日の称号 ---------------- */
+
+const TITLES_BASE = [
+  'ソファ占領王', 'おやつ監視官', '洗濯カゴの守護神', '気まぐれプリンセス', 'ごろごろ大臣',
+  '箱入り名人', '夜ふかし警備隊長', '飼い主操作マスター', '本日のセンター猫', '無言の圧力王',
+];
+
+const TITLE_BIAS_TRAIT = {
+  '箱が好き': ['箱入り名人'],
+  'よく寝る': ['ごろごろ大臣', '夜ふかし警備隊長'],
+  '膝に乗る': ['ソファ占領王'],
+  '食いしん坊': ['おやつ監視官'],
+  'いたずら好き': ['夜ふかし警備隊長', '無言の圧力王'],
+  '甘えん坊': ['気まぐれプリンセス', '飼い主操作マスター'],
+};
+
+const TITLE_BIAS_PERSONALITY = {
+  '王様・女王様': ['本日のセンター猫', '無言の圧力王'],
+  '食いしん坊': ['おやつ監視官'],
+  'マイペース': ['気まぐれプリンセス'],
+};
+
+function getBiasedTitlePool(cat) {
+  const biased = new Set();
+  (cat.traits || []).forEach((t) => (TITLE_BIAS_TRAIT[t] || []).forEach((x) => biased.add(x)));
+  (TITLE_BIAS_PERSONALITY[cat.personality] || []).forEach((x) => biased.add(x));
+  if (biased.size && Math.random() < 0.6) return Array.from(biased);
+  return TITLES_BASE;
+}
+
+export function generateTitle(cat, boosted = false) {
+  const pool = getBiasedTitlePool(cat);
+  const text = pick(pool);
+  if (!boosted) return { text, text2: null, rare: false };
+  let text2 = pick(TITLES_BASE);
+  let guard = 0;
+  while (text2 === text && guard < 5) {
+    text2 = pick(TITLES_BASE);
+    guard++;
+  }
+  return { text, text2, rare: true };
+}
+
+/* ---------------- 猫会議 ---------------- */
+
+export const CONFERENCE_THEMES = [
+  '今日のおやつ', '誰が一番えらいか', 'お気に入りの寝場所', '飼い主への要望',
+  '最近気になること', 'ごはんの時間', '箱の所有権', '窓辺の特等席の使用ルール',
+];
+
+const CONFERENCE_LINE_POOL = {
+  '王様・女王様': [
+    '私は賛成です。ただし条件付きで。', '異議はありません。当然の采配です。',
+    'そのくらいは認めてあげましょう。', '正式に承認します。', '私の意見がすべてです。',
+    'ふむ、悪くない議題ですね。', '採決の必要はありません。私が決めます。', 'よろしい、次の議題へ。',
+  ],
+  '甘えん坊': [
+    '私は賛成です。', 'みんなで一緒がいいな。', '早く決まるとうれしいな。', 'それでいいと思うよ。',
+    'ちょっとだけ意見してもいい？', '賛成！早くみんなでゴロゴロしたい。', 'うんうん、そう思う。', 'とりあえず、そばにいたいな。',
+  ],
+  'ツンデレ': [
+    '別に反対はしてないけど。', 'まあ、それでいいんじゃない。', '…賛成、ということにしておく。',
+    'ふん、そんなことより早く終わらせて。', '異議はないけど納得もしてない。', 'まあ悪くはないかな、知らないけど。',
+    'べつに賛成したいわけじゃないから。', 'そこは譲ってあげる。',
+  ],
+  '天然・おとぼけ': [
+    'え、今何の話でしたっけ。', '賛成でも反対でもある気がします。', 'もう食べた気もします。', 'とりあえず座ります。',
+    'なんとなく良い気がします。', '議題を忘れました。もう一度お願いします。', 'たぶん、それで大丈夫です。', '気づいたらここにいました。',
+  ],
+  '食いしん坊': [
+    'それより、おやつの話をしませんか。', '賛成です。ごはんが増えるなら。', 'お腹が空いてきました。',
+    'その話、ごはんの後でもいいですか。', 'とりあえず賛成しておきます。', 'おやつが絡むなら全力で賛成です。',
+    '食べながらでもいいですか。', '空腹には勝てません。',
+  ],
+  'マイペース': [
+    '特に意見はありません。', '好きにしてください。', '急かされるのは苦手です。', 'まあ、それでいいんじゃない。',
+    '気が向いたら参加します。', '今はそういう気分じゃないかな。', '特にこだわりはありません。', '自分のペースで考えます。',
+  ],
+};
+
+function pickSpeaker(cats, prevId) {
+  if (cats.length === 1) return cats[0];
+  let candidate;
+  let guard = 0;
+  do {
+    candidate = pick(cats);
+    guard++;
+  } while (candidate.id === prevId && guard < 8);
+  return candidate;
+}
+
+export function generateConference(cats, forcedTheme) {
+  const theme = forcedTheme || pick(CONFERENCE_THEMES);
+  const lineCount = Math.floor(Math.random() * 4) + 3; // 3〜6
+  const opener = pick(cats);
+  const lines = [{ catId: opener.id, text: `本日の議題は、${theme}についてです。` }];
+  let prevId = opener.id;
+  for (let i = 1; i < lineCount; i++) {
+    const speaker = pickSpeaker(cats, prevId);
+    const pool = CONFERENCE_LINE_POOL[speaker.personality] || CONFERENCE_LINE_POOL['マイペース'];
+    lines.push({ catId: speaker.id, text: pick(pool) });
+    prevId = speaker.id;
+  }
+  return { theme, lines };
+}
+
+/* ---------------- 飼い主裁判 ---------------- */
+
+export const TRIAL_THEMES = [
+  'おやつが遅かった件', 'なでなで不足の件', '寝床の確保を妨害した件', '写真を撮りすぎた件',
+  'ごはん後すぐ空になった件', '掃除機をかけた件', '来客時に隠れさせられた件', '爪切りを強行した件',
+];
+
+const TRIAL_TESTIMONY_POOL = {
+  '王様・女王様': [
+    '明らかに不服です。', '即刻の改善を求めます。', 'これは看過できません。',
+    '厳正な対応を望みます。', '弁明の余地はないかと。', '当然、私が正しいです。',
+  ],
+  '甘えん坊': [
+    'ちょっと寂しかったです…。', 'もっと構ってほしかったな。', '悲しかったけど、許せます。',
+    '早く仲直りしたいです。', '寂しさは否定できません。', 'でも今はそばにいてほしいです。',
+  ],
+  'ツンデレ': [
+    '別に怒ってないから。', '…まあ、ちょっとは思うところがある。', '気にしてないと言えば嘘になる。',
+    '認めたくないけど不満はある。', 'まあ、今回は目をつぶる。', '次は気をつけてほしいだけ。',
+  ],
+  '天然・おとぼけ': [
+    '何があったか忘れました。', 'たぶん何か問題があった気がします。', 'よくわからないけど、大変だったと思います。',
+    '気づいたら終わっていました。', '特に怒ってはいないと思います。', '曖昧な記憶ですが、許します。',
+  ],
+  '食いしん坊': [
+    'ごはんが関係するなら重大です。', 'おやつの補填を求めます。', '空腹だったのは事実です。',
+    '食料問題は見過ごせません。', 'とにかくお腹が空きました。', '解決策はおやつだと思います。',
+  ],
+  'マイペース': [
+    '特に気にしていません。', 'まあ、そんな日もあります。', '急かされなければ問題ありません。',
+    '自分のペースが守られれば十分です。', '特に不満はありません。', '好きにしてくれて構いません。',
+  ],
+};
+
+export const TRIAL_VERDICTS = [
+  { type: '有罪', detail: '本日のおやつ1回追加' },
+  { type: '執行猶予', detail: 'なでなで5分で和解可能' },
+  { type: '無罪', detail: '今回は許す' },
+  { type: '厳重注意', detail: '今後の対応改善を求める' },
+  { type: '有罪', detail: '追加のブラッシング刑' },
+  { type: '執行猶予', detail: '一緒に昼寝すれば減刑' },
+];
+
+export function generateTrial(cats) {
+  const theme = pick(TRIAL_THEMES);
+  const testimonies = cats.map((cat) => {
+    const pool = TRIAL_TESTIMONY_POOL[cat.personality] || TRIAL_TESTIMONY_POOL['マイペース'];
+    return { catId: cat.id, text: pick(pool) };
+  });
+  const verdict = pick(TRIAL_VERDICTS);
+  return { theme, testimonies, verdict };
+}
+
+/* ---------------- ランダムイベント ---------------- */
+
+const SNACK_CRISIS_QUOTES = [
+  'おやつ要求レベル、本日はMAXに達しました。',
+  '緊急事態です。おやつの残量を確認してください。',
+  'おやつ在庫、危機的状況との報告です。',
+  '本日、おやつ要求が過去最高を記録しました。',
+];
+
+const EVENT_POOL = [
+  { type: 'conference', weight: 15, minCats: 2, emoji: '🗣️', label: '緊急猫会議が招集されました' },
+  { type: 'trial', weight: 20, minCats: 1, emoji: '⚖️', label: '本日は飼い主裁判が開廷されます' },
+  { type: 'title-boost', weight: 20, minCats: 1, emoji: '✨', label: '本日の称号が強化されました' },
+  { type: 'news-special', weight: 20, minCats: 1, emoji: '📺', label: '猫ニュース特番' },
+  { type: 'snack-crisis', weight: 15, minCats: 1, emoji: '🚨', label: 'おやつ危機速報' },
+  { type: 'boss-cat', weight: 10, minCats: 2, emoji: '👑', label: '本日のボス猫が決定しました' },
+];
+
+const EVENT_CHANCE = 0.3;
+
+export function pickRandomEvent(cats, currentCat) {
+  if (!currentCat || Math.random() > EVENT_CHANCE) return null;
+  const available = EVENT_POOL.filter((e) => cats.length >= e.minCats);
+  if (!available.length) return null;
+
+  const totalWeight = available.reduce((sum, e) => sum + e.weight, 0);
+  let roll = Math.random() * totalWeight;
+  let chosen = available[available.length - 1];
+  for (const e of available) {
+    if (roll < e.weight) { chosen = e; break; }
+    roll -= e.weight;
+  }
+
+  const base = { type: chosen.type, emoji: chosen.emoji, label: chosen.label };
+
+  switch (chosen.type) {
+    case 'conference': {
+      const others = cats.filter((c) => c.id !== currentCat.id);
+      const partner = pick(others);
+      const conference = generateConference([currentCat, partner]);
+      return { ...base, conference };
+    }
+    case 'trial': {
+      const others = shuffleArray(cats.filter((c) => c.id !== currentCat.id)).slice(0, 2);
+      const trial = generateTrial([currentCat, ...others]);
+      return { ...base, trial };
+    }
+    case 'title-boost': {
+      const title = generateTitle(currentCat, true);
+      return { ...base, title };
+    }
+    case 'news-special': {
+      const newsItems = [];
+      let guard = 0;
+      while (newsItems.length < 3 && guard < 20) {
+        const item = generateNews(currentCat.name);
+        if (!newsItems.includes(item)) newsItems.push(item);
+        guard++;
+      }
+      return { ...base, newsItems };
+    }
+    case 'snack-crisis': {
+      const message = pick(SNACK_CRISIS_QUOTES);
+      return { ...base, message };
+    }
+    case 'boss-cat': {
+      const boss = pick(cats);
+      return { ...base, bossCat: { id: boss.id, name: boss.name, color: boss.color, photo: boss.photo } };
+    }
+    default:
+      return null;
+  }
+}
+
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+/* ---------------- トップ画面の遊びごころ ---------------- */
+
+const PLAY_SUGGESTIONS = [
+  '今日は猫会議を試してみよう', '飼い主裁判が起きるかも？', '本日の称号を集めよう',
+  '猫ニュース特番に注目', '今日はどんな判決が出るかな', '称号コンプリートを目指そう',
+];
+
+const ONE_LINERS = [
+  '猫たちが何か言いたそうです', '今日は誰が主役？', '会議の準備はできています',
+  '裁判所が静かに開廷を待っています', '称号争いが激化中かもしれません', '今日はどんな一日になるでしょう',
+];
+
+export function generatePlaySuggestion() {
+  return pick(PLAY_SUGGESTIONS);
+}
+
+export function generateOneLiner() {
+  return pick(ONE_LINERS);
+}
